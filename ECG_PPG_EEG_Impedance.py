@@ -38,8 +38,6 @@ rate = []
 devices_name = ["GPPG", "BPPG", "IPPG", "YPPG"]
 devices_name_label = []
 
-hr_label = None
-
 x_scale = [i1 * 10 / data_length for i1 in range(data_length)]
 
 def _async_raise(tid, exctype):
@@ -61,9 +59,6 @@ def stop_thread(thread):
 
 def serial_xx():
     global data_bytes
-    global custom_file, file_open_flag, pw
-    global rate
-    global devices_name_label
     while True:
         count = mSerial.inWaiting()
         if count:
@@ -73,16 +68,16 @@ def serial_xx():
             k = 0
             while k + package_size + 2 < data_len:  # pacakge size is 242
                 if data_bytes[k] == 0X16 and data_bytes[k + 1] == 0X00 and data_bytes[k + package_size] == 0X16 and data_bytes[k + package_size + 1] == 0X00:
-                    p = data_bytes[k + 1] - 0X30
-                    t = time.time()
-                    if file_open_flag:
-                        custom_file.write('\r\n' + str(round(t * 1000)) + ' A' + str(p) + ' ')
                     for dataset in range(dataset_count):
                         for led in range(led_count):
-                            start_index = k + 8 + dataset * dataset_size + led * led_size;
-                            ppg_value = (data_bytes[start_index] & 0x3F) * 65535 + data_bytes[start_index + 1] * 256 + data_bytes[start_index + 2]
-                            if ppg_value > 8388607:
-                                ppg_value = ppg_value - 16777216
+                            start_index = k + 8 + dataset * dataset_size + led * led_size
+                            ppg_value = 0
+                            if led == 0 or led == 2:
+                                ppg_value = (data_bytes[start_index + 1] << 16) | (data_bytes[start_index + 0] << 8) | (data_bytes[start_index + 3])
+                            else:
+                                last_ppg_value = (data_bytes[start_index] << 16 + data_bytes[start_index - 1]) & 170
+                                ppg_value = (last_ppg_value << 16) |  (data_bytes[start_index + 2] << 8) | data_bytes[start_index + 1]
+
                             que[led].put(ppg_value)
                             rate[led] = rate[led] + 1
                     k = k + package_size
@@ -95,9 +90,7 @@ def serial_xx():
 
 class MainWidget(QtWidgets.QMainWindow):
     def action_save(self):
-        global custom_file
-        global file_open_flag
-        global rate, velocity, label
+        global custom_file, file_open_flag
 
         if self.saveButton.text() == "SaveData":
             self.saveButton.setText("StopSaveData")
@@ -121,8 +114,7 @@ class MainWidget(QtWidgets.QMainWindow):
 
     def __init__(self):
         super().__init__()
-        global hr_label
-        self.setWindowTitle("ECG_PPG_EEG_Impedance")  # 设置窗口标题
+        self.setWindowTitle("PPG")  # 设置窗口标题
         main_widget = QtWidgets.QWidget()  # 实例化一个widget部件
         main_layout = QtWidgets.QGridLayout()  # 实例化一个网格布局层
         main_widget.setLayout(main_layout)  # 设置主widget部件的布局为网格布局
@@ -137,7 +129,7 @@ class MainWidget(QtWidgets.QMainWindow):
             data.insert(k, array.array('i'))
             data[k] = np.zeros(data_length).__array__('d')
 
-            que.insert(k, Queue(maxsize=0))
+            que.insert(k, Queue(maxsize=2000))
             index_now.insert(k, 0)
             label.insert(k, QtWidgets.QLabel())
             label[k].setAlignment(Qt.AlignCenter)
@@ -146,7 +138,7 @@ class MainWidget(QtWidgets.QMainWindow):
             devices_name_label.insert(k, QtWidgets.QLabel())
             devices_name_label[k].setAlignment(Qt.AlignCenter)
             devices_name_label[k].setStyleSheet("color: #000000; font-size:24px; font-weight:bold")
-            devices_name_label[k].setText(devices_name)
+            devices_name_label[k].setText(devices_name[k])
 
             rate.insert(k, 0)
             velocity.insert(k, 0)
@@ -178,7 +170,7 @@ class MainWidget(QtWidgets.QMainWindow):
         result = QtWidgets.QMessageBox.question(self, "Impedance", "Do you want to exit?",
                                                 QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
         if result == QtWidgets.QMessageBox.Yes:
-            stop_thread(th1)
+            stop_thread(thread_serial_port)
             print("Close successfully")
             event.accept()
         else:
@@ -197,23 +189,21 @@ def consumer_ppg(index):
             data[index][index_now[index] - 1] = raw_data
 
 def plot_data():
-    global x_scale
-    for i in range(led_count):
-        curve[i].setData(x_scale, data)
+    for led in range(led_count):
+        curve[led].setData(x_scale, data[led])
 
 def rate_refresh():
-    global rate, velocity, label
     for k in range(led_count):
         velocity[k] = rate[k] - velocity[k]
         valid = velocity[k]
-        receiving_rate = valid * 100 / (3 * 25)
+        receiving_rate = valid * 100 / (3 * 250)
         velocity[k] = rate[k]
         label[k].setText(' Efficiency:  %d %%' % receiving_rate)
 
 
 if __name__ == "__main__":
     # 设置端口号及波特率
-    port_xx = "COM18"
+    port_xx = "COM5"
     bps = 250000
     # 串口执行到这已经打开 再用open命令会报错
     mSerial = serial.Serial(port_xx, int(bps))
@@ -226,18 +216,20 @@ if __name__ == "__main__":
         mSerial.close()  # 关闭端口
     app = QtWidgets.QApplication(sys.argv)
     gui = MainWidget()
-    th1 = threading.Thread(target=serial_xx, daemon=True)
-    th1.start()
+    thread_serial_port = threading.Thread(target=serial_xx, daemon=True)
+    thread_serial_port.start()
     gui.show()
-    timer = pg.QtCore.QTimer()
-    timer.timeout.connect(plot_data)  # 定时刷新数据显示
-    timer.start(30)  # 多少ms调用一次
-    timer1 = pg.QtCore.QTimer()
-    timer1.timeout.connect(rate_refresh)  # 定时刷新数据显示
-    timer1.start(3000)  # 多少ms调用一次
+    
+    timer_plot = pg.QtCore.QTimer()
+    timer_plot.timeout.connect(plot_data)  # 定时刷新数据显示
+    timer_plot.start(30)  # 多少ms调用一次
+    
+    timer_rate_refresh = pg.QtCore.QTimer()
+    timer_rate_refresh.timeout.connect(rate_refresh)  # 定时刷新数据显示
+    timer_rate_refresh.start(3000)  # 多少ms调用一次
 
     for i in range(led_count):
-        process.insert(i, threading.Thread(target=consumer_ppg, daemon=True))
-        process.start()
+        process.insert(i, threading.Thread(target=consumer_ppg, args=(i,), daemon=True))
+        process[i].start()
 
     sys.exit(app.exec_())
