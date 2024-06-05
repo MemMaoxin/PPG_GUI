@@ -1,10 +1,10 @@
-from constants import ACC_NAME_LIST, PPG_NAME_LIST, ALL_NAME_LIST_ONE
+from constants import ACC_NAME_LIST, PPG_NAME_LIST, ALL_NAME_LIST_AS_ONE
 from constants import DATASET_COUNT, PPG_COUNT, ACC_COUNT
 from constants import DATASET_SIZE, PPG_SIZE, ACC_SIZE
 
 
 def parse_package_data(data_bytes):
-    parsed_data = {name: [] for name in ALL_NAME_LIST_ONE}
+    parsed_data = {name: [] for name in ALL_NAME_LIST_AS_ONE}
 
     for dataset in range(DATASET_COUNT):
         acc_start = dataset * DATASET_SIZE
