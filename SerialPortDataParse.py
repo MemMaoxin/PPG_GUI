@@ -1,18 +1,10 @@
-DATA_PACKAGE_SIZE = 240
-DATASET_COUNT = 10
-PPG_COUNT = 4
-ACC_COUNT = 3
+from constants import ACC_NAME_LIST, PPG_NAME_LIST, ALL_NAME_LIST_ONE
+from constants import DATASET_COUNT, PPG_COUNT, ACC_COUNT
+from constants import DATASET_SIZE, PPG_SIZE, ACC_SIZE
 
-DATASET_SIZE = 24
-PPG_SIZE = 3
-ACC_SIZE = 2
-
-ACC_NAME_LIST = ["X", "Y", "Z"]
-PPG_NAME_LIST = ["GPPG", "BPPG", "IPPG", "YPPG"]
-ALL_NAME_LIST = ACC_NAME_LIST + PPG_NAME_LIST
 
 def parse_package_data(data_bytes):
-    parsed_data = {name: [] for name in ALL_NAME_LIST}
+    parsed_data = {name: [] for name in ALL_NAME_LIST_ONE}
 
     for dataset in range(DATASET_COUNT):
         acc_start = dataset * DATASET_SIZE
